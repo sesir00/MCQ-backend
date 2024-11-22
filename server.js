@@ -13,7 +13,7 @@ const db = mysql.createConnection({
   host: "localhost",
   user: "root",
   password: "",
-  database: "registration form"
+  database: "mcq_app"
 });
 
 db.connect((err) => {
@@ -27,6 +27,41 @@ db.connect((err) => {
 //Express Middleware
 app.use(cors());
 app.use(express.json());
+  
+
+
+
+app.post('/options', (req, res) => {
+  // Log received request data for debugging
+  console.log('Received request:', req.body);
+
+  // Destructure data from request body
+  const { question_id, option_text, is_correct } = req.body;
+
+  // Define SQL query with placeholders for safety
+  const query = `INSERT INTO options (question_id, option_text, is_correct) VALUES (?, ?, ?)`;
+
+  // Execute the query with provided data
+  db.query(query, [question_id, option_text, is_correct], (err, result) => {
+    if (err) {
+      // Log error for debugging and send error response
+      console.error('Error inserting option:', err);
+      return res.status(500).json({ error: 'Database error occurred' });
+    }
+
+    // Send success response with inserted option details
+    const newOption = {
+      option_id: result.insertId, // ID of newly inserted option
+      question_id,
+      option_text,
+      is_correct,
+    };
+
+    console.log('Option inserted successfully:', newOption);
+    res.status(201).json(newOption);
+  });
+});
+
 
 //register route
 app.post('/registrationform', async (req, res) => {
@@ -130,6 +165,76 @@ app.get('/questions', (req, res) => {
       }, []);
 
       res.json(questions);
+  });
+});
+
+app.post('/pay', (req, res) => {
+  const { amount, productId, successUrl, failureUrl } = req.body;
+
+  const eSewaUrl = `https://esewa.com.np/epay/main`;
+
+  const params = {
+      amt: 49,
+      psc: 0,  // eSewa processing fee, usually set to 0
+      pdc: 0,  // Partner discount commission
+      txAmt: 0, // Tax amount
+      tAmt: amount, // Total amount (amt + psc + pdc + txAmt)
+      pid: productId, // Unique product identifier
+      scd: '8gBm/:&EnhH.1/q', // Replace with your Merchant ID
+      su: successUrl, // Success callback URL
+      fu: failureUrl  // Failure callback URL
+  };
+
+  // Redirect the user to eSewa's payment page
+  const queryParams = new URLSearchParams(params).toString();
+  res.redirect(`${eSewaUrl}?${queryParams}`);
+});
+
+app.get('/success', async (req, res) => {
+  const { oid, amt, refId } = req.query;
+
+  // Verify payment with eSewa
+  const verifyUrl = `https://esewa.com.np/epay/transrec`;
+
+  try {
+      const response = await axios.post(
+          verifyUrl,
+          new URLSearchParams({
+              amt: amt,
+              pid: oid,
+              scd: 'YOUR_MERCHANT_ID',
+              rid: refId,
+          }).toString()
+      );
+
+      if (response.data.includes('<response_code>Success</response_code>')) {
+          // Payment verification successful
+          res.send('Payment successful and verified!');
+      } else {
+          res.send('Payment verification failed!');
+      }
+  } catch (error) {
+      res.status(500).send('Error verifying payment');
+  }
+});
+
+app.get('/failure', (req, res) => {
+  res.send('Payment failed!');
+});
+
+
+app.put('/options/:id', (req, res) => {
+  const optionId = req.params.id;
+  const { option_text } = req.body;
+
+  const query = 'UPDATE options SET option_text = ? WHERE option_id = ?';
+  db.query(query, [option_text, optionId], (err, result) => {
+    if (err) {
+      console.error('Error updating option:', err);
+      return res.status(500).json({ error: 'Database error occurred' });
+    }
+
+    res.json({ message: 'Option updated successfully' });
   });
 });
 
